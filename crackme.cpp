@@ -9,12 +9,91 @@
 #define MAX_LEN 50
 #define KEY_LEN 10
 
+// Дополнительная функциональность (не обязательная для лабы)
+void GenerateJokes() {
+    srand((unsigned)time(NULL));
+
+    const char* joke_parts1[] = {
+        "Why did the programmer", 
+        "Why does the computer", 
+        "Why did the code", 
+        "How to explain to a bug",
+        "Why does the keyboard", 
+        "Why did the compiler", 
+        "Why does the laptop", 
+        "Why did the mouse",
+        "Why does the Internet", 
+        "Why did the server",
+        "Why does the student coder",
+        "Why did the debugger"
+    };
+    
+    const char* joke_parts2[] = {
+        "go to the bar?", 
+        "not sleep at night?", 
+        "break?", 
+        "talk to the toaster?",
+        "keep pressing Enter?", 
+        "throw an error?", 
+        "start overheating?", 
+        "run away from the desk?",
+        "crash again?", 
+        "forget the password?",
+        "freeze in winter?",
+        "argue with the printer?"
+    };
+    
+    const char* joke_parts3[] = {
+        "Because he found a bug in the menu!", 
+        "To find a memory leak!", 
+        "He was looking for a way out of the loop!", 
+        "Trying to compile dreams!",
+        "Because someone pressed Ctrl+Alt+Del too hard!", 
+        "It couldn’t handle the pressure of recursion!", 
+        "Searching for Wi-Fi in another dimension!", 
+        "It mistook RAM for jam!",
+        "Because the code needed some coffee!", 
+        "To hide from infinite loops!",
+        "Because semicolons are scary!",
+        "It was debugging its own life!"
+    };
+
+    int size1 = sizeof(joke_parts1) / sizeof(joke_parts1[0]);
+    int size2 = sizeof(joke_parts2) / sizeof(joke_parts2[0]);
+    int size3 = sizeof(joke_parts3) / sizeof(joke_parts3[0]);
+
+    FILE* joke_file = fopen("jokes_generated.txt", "w");
+    if (joke_file) {
+        fprintf(joke_file, "ADDITIONAL JOKES\n\n");
+
+        int jokes_count = 3 + rand() % 3; // 3–5 шуток
+        for (int i = 0; i < jokes_count; i++) {
+            int part1 = rand() % size1;
+            int part2 = rand() % size2;
+            int part3 = rand() % size3;
+
+            // Защита от одинаковых кусочков в одной шутке
+            while (part2 == part1) part2 = rand() % size2;
+            while (part3 == part2 || part3 == part1) part3 = rand() % size3;
+
+            fprintf(joke_file, "Joke #%d:\n", i + 1);
+            fprintf(joke_file, "- %s %s\n", joke_parts1[part1], joke_parts2[part2]);
+            fprintf(joke_file, "- %s\n\n", joke_parts3[part3]);
+        }
+
+        fclose(joke_file);
+        printf("Additional: jokes generated in jokes_generated.txt\n");
+    }
+}
+
+
 void ShowSuccessWindow() {
+    // Основное сообщение об успехе (требование лабы)
     MessageBoxW(
         NULL,
-        L"Вы успешно вошли в защищаемое ПО!\n\n"
-        L"Серийный ключ был сгенерирован и сохранён в файле serial.txt",
-        L"Доступ разрешён!",
+        L"Password correct!\n\n"
+        L"Serial number generated and saved in serial.txt file",
+        L"Success",
         MB_OK | MB_ICONINFORMATION | MB_SYSTEMMODAL
     );
 }
@@ -22,17 +101,18 @@ void ShowSuccessWindow() {
 void ShowErrorWindow() {
     MessageBoxW(
         NULL,
-        L"Неверный пароль!\n\n"
-        L"Проверьте файл password.txt и попробуйте снова.",
-        L"Доступ запрещён",
+        L"Wrong password!\n\n"
+        L"Check password.txt file and try again.",
+        L"Error",
         MB_OK | MB_ICONERROR | MB_SYSTEMMODAL
     );
 }
 
+// Основная функция проверки пароля (требование лабы)
 int Check_passw(void) {
     FILE* pasw_file = fopen("password.txt", "r");
     if (pasw_file == NULL) {
-        printf("Error ->> password.txt\n");
+        printf("Error: password.txt file not found\n");
         return 0;
     }
     
@@ -44,9 +124,10 @@ int Check_passw(void) {
     pasw[strcspn(pasw, "\n")] = 0;
     
     if (strcmp(PASSWORD, pasw) == 0) {
+        // Генерация серийного номера в формате KEY$xxxxxxxxxx$ (требование лабы)
         FILE* key_file = fopen("serial.txt", "w");
         if (key_file == NULL) {
-            printf("Error ->> serial.txt\n");
+            printf("Error creating serial.txt file\n");
             free(pasw);
             return 0;
         }
@@ -55,32 +136,40 @@ int Check_passw(void) {
         srand(time(NULL));
         
         for (int i = 0; i < 10; i++) {
-            key[4 + i] = 33 + rand() % 94;
+            key[4 + i] = 33 + rand() % 94; // Печатные символы
         }
         
         fprintf(key_file, "%s", key);
         fclose(key_file);
-        printf("Serial key created!\n");
+        printf("Serial number created: %s\n", key);
         
         free(pasw);
         return 1;
     }
     else {
+        printf("Wrong password!\n");
         free(pasw);
         return 0;
     }
 }
 
 int main() {
-    
-    printf("Starting up...\n");
+    printf("Starting password check program...\n");
+    printf("Reading password from password.txt file...\n");
     
     if (Check_passw()) {
+        // Основная логика лабы
         ShowSuccessWindow();
+        
+        // Дополнительная функциональность (бонус)
+        GenerateJokes();
     }
     else {
         ShowErrorWindow();
     }
+    
+    printf("Program completed. Press Enter to exit...\n");
+    getchar();
     
     return 0;
 }

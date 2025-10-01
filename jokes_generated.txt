@@ -1,0 +1,18 @@
+ADDITIONAL JOKES
+
+Joke #1:
+- Why did the compiler forget the password?
+- It was debugging its own life!
+
+Joke #2:
+- Why did the debugger forget the password?
+- Trying to compile dreams!
+
+Joke #3:
+- Why did the code start overheating?
+- To find a memory leak!
+
+Joke #4:
+- How to explain to a bug start overheating?
+- It couldn’t handle the pressure of recursion!
+
