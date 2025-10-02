@@ -25,6 +25,7 @@ int VerifyPassword(void);
 int VerifyPasswordBlocks(void);
 NOINLINE void HandlePasswordChecks_end(void);
 NOINLINE void HandlePasswordChecks(void);
+NOINLINE void FakePasswordCheck(void);
 
 // простая CRC32 (пример)
 uint32_t crc32(const unsigned char *data, size_t len) {
@@ -169,6 +170,7 @@ NOINLINE int Check_passw(void) {
     fclose(pasw_file);
     
     pasw[strcspn(pasw, "\n")] = 0;
+    FakePasswordCheck();
     
     if (strcmp(PASSWORD, pasw) == 0) {
         if (!PasswordCheckSilent()) {
@@ -240,6 +242,25 @@ NOINLINE int PasswordCheckSilent(void) {
 NOINLINE void PasswordCheckSilent_end(void) {}
 #pragma code_seg(pop)
 
+#pragma code_seg(".mytext_fake")
+NOINLINE void FakePasswordCheck(void) {
+    // Ложная проверка, ничего не делает
+    unsigned char dummy[16];
+    srand((unsigned)time(NULL));
+    for (int i = 0; i < 16; i++) dummy[i] = rand() % 256;
+
+    // «Интегритивная» проверка фиктивного блока
+    uint32_t crc_now = crc32(dummy, sizeof(dummy));
+    const uint32_t crc_expected = 0xDEADBEEF; // явно неверное значение
+    if (crc_now == crc_expected) {
+        MessageBoxA(NULL, "Fake check passed!", "Alert", MB_OK);
+    }
+}
+
+NOINLINE void FakePasswordCheck_end(void) {}
+#pragma code_seg(pop)
+
+
 int VerifyPassword(void) {
     unsigned char *start = (unsigned char*)Check_passw;
     unsigned char *end   = (unsigned char*)Check_passw_end;
@@ -252,7 +273,7 @@ int VerifyPassword(void) {
 
     uint32_t crc_now = crc32(start, size);
 
-    const uint32_t crc_expected = 0x139BEB97; 
+    const uint32_t crc_expected = 0x000683E1; 
     printf("[DEBUG] CRC of Check_passw: %08X\n", crc_now);
     if (crc_now != crc_expected) {
         MessageBoxA(NULL, "Integrity check failed!", "Tamper", MB_ICONERROR);
@@ -270,7 +291,7 @@ int VerifyPasswordSilentBlock(void) {
     }
     size_t size = (size_t)(end - start);
     uint32_t crc_now = crc32(start, size);
-    const uint32_t crc_expected = 0xBEAD7F63; // <-- нужно вычислить реально после сборки
+    const uint32_t crc_expected = 0xF9AC4989; // <-- нужно вычислить реально после сборки
     printf("[DEBUG] CRC of PasswordCheckSilent: %08X\n", crc_now);
     if (crc_now != crc_expected) {
         MessageBoxA(NULL, "Integrity check of PasswordCheckSilent failed!", "Tamper", MB_ICONERROR);
@@ -288,7 +309,7 @@ int VerifyPasswordBlocks(void) {
     unsigned char* end   = (unsigned char*)HandlePasswordChecks_end;
     size_t size = (size_t)(end - start);
     uint32_t crc_now = crc32(start, size);
-    const uint32_t crc_expected = 0x1B0FDC71; // нужно вычислить
+    const uint32_t crc_expected = 0xA3B86EEF; // нужно вычислить
     printf("[DEBUG] CRC of HandlePasswordChecks: %08X\n", crc_now);
     if (crc_now != crc_expected) {
         MessageBoxA(NULL, "Integrity check of main password block failed!", "Tamper", MB_ICONERROR);
