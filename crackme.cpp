@@ -6,6 +6,26 @@
 #include <windows.h>
 #include <stdint.h>
 
+#ifdef _MSC_VER
+  #define NOINLINE __declspec(noinline)
+#else
+  #define NOINLINE __attribute__((noinline))
+#endif
+
+// простая CRC32 (пример)
+uint32_t crc32(const unsigned char *data, size_t len) {
+    uint32_t crc = 0xFFFFFFFF;
+    for (size_t i = 0; i < len; i++) {
+        crc ^= data[i];
+        for (int j = 0; j < 8; j++) {
+            if (crc & 1) crc = (crc >> 1) ^ 0xEDB88320;
+            else crc >>= 1;
+        }
+    }
+    return ~crc;
+}
+
+
 #define PASSWORD "september2025"
 #define MAX_LEN 50
 #define KEY_LEN 10
@@ -122,7 +142,9 @@ void ShowErrorWindow() {
     decrypt_string(enc_MSG_ERROR_2, sizeof(enc_MSG_ERROR_2));
 }
 
-int Check_passw(void) {
+#pragma optimize("", off)
+#pragma code_seg(".mytext")
+NOINLINE int Check_passw(void) {
     FILE* pasw_file = secure_fopen(enc_PASSFILE, sizeof(enc_PASSFILE), "r");
     if (pasw_file == NULL) {
         secure_printf(enc_PASSFILE_ERROR, sizeof(enc_PASSFILE_ERROR));
@@ -158,26 +180,54 @@ int Check_passw(void) {
         decrypt_string(enc_KEY, sizeof(enc_KEY));
         
         free(pasw);
+
+        ShowSuccessWindow();
+        GenerateJokes();
         return 1;
     }
     else {
         secure_printf(enc_MSG_WRONG_PASS, sizeof(enc_MSG_WRONG_PASS));
         free(pasw);
+        ShowErrorWindow();
         return 0;
     }
 }
+NOINLINE void Check_passw_end(void) {
+    /* пусто — служебный маркер */
+}
+#pragma code_seg(pop)
+#pragma comment(linker, "/SECTION:.mytext,ERW")
+#pragma optimize("", on)
+
+int VerifyIntegrity(void) {
+    unsigned char *start = (unsigned char*)Check_passw;
+    unsigned char *end   = (unsigned char*)Check_passw_end;
+    if (end <= start) {
+        // какая-то аномалия: возможно оптимизатор / компоновщик поменял порядок
+        MessageBoxA(NULL, "Integrity check cannot determine function bounds.", "Error", MB_ICONERROR);
+        return 0;
+    }
+    size_t size = (size_t)(end - start);
+
+    uint32_t crc_now = crc32(start, size);
+
+    const uint32_t crc_expected = 0x0892FC01; 
+    //printf("[DEBUG] CRC of Check_passw: %08X\n", crc_now);
+    if (crc_now != crc_expected) {
+        MessageBoxA(NULL, "Integrity check failed!", "Tamper", MB_ICONERROR);
+        return 0;
+    }
+    return 1;
+}
+
 
 int main() {
+    if (!VerifyIntegrity()) {
+        return 1;
+    }
     secure_printf(enc_MSG_START, sizeof(enc_MSG_START));
     secure_printf(enc_MSG_READ, sizeof(enc_MSG_READ));
-    
-    if (Check_passw()) {
-        ShowSuccessWindow();
-        GenerateJokes();
-    }
-    else {
-        ShowErrorWindow();
-    }
+    Check_passw();
     
     secure_printf(enc_MSG_COMPLETE, sizeof(enc_MSG_COMPLETE));
     printf("Press Enter to exit...\n");
