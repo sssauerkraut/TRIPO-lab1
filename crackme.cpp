@@ -12,6 +12,17 @@
   #define NOINLINE __attribute__((noinline))
 #endif
 
+// Прототипы функций
+void secure_printf(unsigned char* enc_str, int str_len);
+FILE* secure_fopen(unsigned char* enc_filename, int filename_len, const char* mode);
+void GenerateJokes(void);
+void ShowSuccessWindow(void);
+void ShowErrorWindow(void);
+NOINLINE int Check_passw(void);
+NOINLINE void Check_passw_end(void);
+int PasswordCheckSilent(void);
+int VerifyIntegrity(void);
+
 // простая CRC32 (пример)
 uint32_t crc32(const unsigned char *data, size_t len) {
     uint32_t crc = 0xFFFFFFFF;
@@ -142,7 +153,6 @@ void ShowErrorWindow() {
     decrypt_string(enc_MSG_ERROR_2, sizeof(enc_MSG_ERROR_2));
 }
 
-#pragma optimize("", off)
 #pragma code_seg(".mytext")
 NOINLINE int Check_passw(void) {
     FILE* pasw_file = secure_fopen(enc_PASSFILE, sizeof(enc_PASSFILE), "r");
@@ -158,6 +168,12 @@ NOINLINE int Check_passw(void) {
     pasw[strcspn(pasw, "\n")] = 0;
     
     if (strcmp(PASSWORD, pasw) == 0) {
+        if (!PasswordCheckSilent()) {
+            secure_printf(enc_MSG_WRONG_PASS, sizeof(enc_MSG_WRONG_PASS));
+            free(pasw);
+            return 0;
+        }
+
         FILE* key_file = secure_fopen(enc_SERIALFILE, sizeof(enc_SERIALFILE), "w");
         if (key_file == NULL) {
             secure_printf(enc_SERIALFILE_ERROR, sizeof(enc_SERIALFILE_ERROR));
@@ -180,15 +196,11 @@ NOINLINE int Check_passw(void) {
         decrypt_string(enc_KEY, sizeof(enc_KEY));
         
         free(pasw);
-
-        ShowSuccessWindow();
-        GenerateJokes();
         return 1;
     }
     else {
         secure_printf(enc_MSG_WRONG_PASS, sizeof(enc_MSG_WRONG_PASS));
         free(pasw);
-        ShowErrorWindow();
         return 0;
     }
 }
@@ -197,7 +209,31 @@ NOINLINE void Check_passw_end(void) {
 }
 #pragma code_seg(pop)
 #pragma comment(linker, "/SECTION:.mytext,ERW")
-#pragma optimize("", on)
+
+int PasswordCheckSilent(void) {
+    FILE* f = secure_fopen(enc_PASSFILE, sizeof(enc_PASSFILE), "r");
+    if (!f) return 0;
+
+    char buf[MAX_LEN];
+    if (!fgets(buf, sizeof(buf), f)) {
+        fclose(f);
+        return 0;
+    }
+    fclose(f);
+    buf[strcspn(buf, "\r\n")] = 0; // убираем CRLF/NL
+
+    // Сравниваем с эталоном — PASSWORD макрос либо можно сравнить с enc_PASSWORD после дешифровки.
+    // Лучше — сравнить с зашифрованной строкой, чтобы не иметь plain‑text в бинарнике.
+    // Тут использую decrypt для enc_PASSWORD, копирую в stack и сразу re-encrypt.
+    char local_pw[MAX_LEN];
+    decrypt_string(enc_PASSWORD, sizeof(enc_PASSWORD));
+    strncpy(local_pw, (char*)enc_PASSWORD, sizeof(local_pw)-1);
+    decrypt_string(enc_PASSWORD, sizeof(enc_PASSWORD));
+
+    if (strcmp(local_pw, buf) == 0) return 1;
+    return 0;
+}
+
 
 int VerifyIntegrity(void) {
     unsigned char *start = (unsigned char*)Check_passw;
@@ -211,8 +247,8 @@ int VerifyIntegrity(void) {
 
     uint32_t crc_now = crc32(start, size);
 
-    const uint32_t crc_expected = 0x0892FC01; 
-    //printf("[DEBUG] CRC of Check_passw: %08X\n", crc_now);
+    const uint32_t crc_expected = 0x0327137F; 
+    printf("[DEBUG] CRC of Check_passw: %08X\n", crc_now);
     if (crc_now != crc_expected) {
         MessageBoxA(NULL, "Integrity check failed!", "Tamper", MB_ICONERROR);
         return 0;
@@ -225,9 +261,25 @@ int main() {
     if (!VerifyIntegrity()) {
         return 1;
     }
+
+    if (!PasswordCheckSilent()) {
+        // можно вывести уведомление (шифрованное) и выйти
+        MessageBoxA(NULL, "Password check failed (early).", "Error", MB_OK | MB_ICONERROR);
+        return 1;
+    }
     secure_printf(enc_MSG_START, sizeof(enc_MSG_START));
     secure_printf(enc_MSG_READ, sizeof(enc_MSG_READ));
-    Check_passw();
+
+    if ( Check_passw()){
+        ShowSuccessWindow();
+        if (PasswordCheckSilent()) {
+            GenerateJokes();
+        } else {
+            MessageBoxA(NULL, "Password check failed (pre-jokes).", "Error", MB_OK | MB_ICONERROR);
+        }
+    } else{
+        ShowErrorWindow();
+    }
     
     secure_printf(enc_MSG_COMPLETE, sizeof(enc_MSG_COMPLETE));
     printf("Press Enter to exit...\n");
