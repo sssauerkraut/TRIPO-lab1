@@ -21,7 +21,10 @@ void ShowErrorWindow(void);
 NOINLINE int Check_passw(void);
 NOINLINE void Check_passw_end(void);
 int PasswordCheckSilent(void);
-int VerifyIntegrity(void);
+int VerifyPassword(void);
+int VerifyPasswordBlocks(void);
+NOINLINE void HandlePasswordChecks_end(void);
+NOINLINE void HandlePasswordChecks(void);
 
 // простая CRC32 (пример)
 uint32_t crc32(const unsigned char *data, size_t len) {
@@ -210,7 +213,8 @@ NOINLINE void Check_passw_end(void) {
 #pragma code_seg(pop)
 #pragma comment(linker, "/SECTION:.mytext,ERW")
 
-int PasswordCheckSilent(void) {
+#pragma code_seg(".mytext3")
+NOINLINE int PasswordCheckSilent(void) {
     FILE* f = secure_fopen(enc_PASSFILE, sizeof(enc_PASSFILE), "r");
     if (!f) return 0;
 
@@ -233,9 +237,10 @@ int PasswordCheckSilent(void) {
     if (strcmp(local_pw, buf) == 0) return 1;
     return 0;
 }
+NOINLINE void PasswordCheckSilent_end(void) {}
+#pragma code_seg(pop)
 
-
-int VerifyIntegrity(void) {
+int VerifyPassword(void) {
     unsigned char *start = (unsigned char*)Check_passw;
     unsigned char *end   = (unsigned char*)Check_passw_end;
     if (end <= start) {
@@ -247,7 +252,7 @@ int VerifyIntegrity(void) {
 
     uint32_t crc_now = crc32(start, size);
 
-    const uint32_t crc_expected = 0x0327137F; 
+    const uint32_t crc_expected = 0x139BEB97; 
     printf("[DEBUG] CRC of Check_passw: %08X\n", crc_now);
     if (crc_now != crc_expected) {
         MessageBoxA(NULL, "Integrity check failed!", "Tamper", MB_ICONERROR);
@@ -256,11 +261,64 @@ int VerifyIntegrity(void) {
     return 1;
 }
 
+int VerifyPasswordSilentBlock(void) {
+    unsigned char* start = (unsigned char*)PasswordCheckSilent;
+    unsigned char* end   = (unsigned char*)PasswordCheckSilent_end;
+    if (end <= start) {
+        MessageBoxA(NULL, "Integrity check cannot determine PasswordCheckSilent bounds.", "Error", MB_ICONERROR);
+        return 0;
+    }
+    size_t size = (size_t)(end - start);
+    uint32_t crc_now = crc32(start, size);
+    const uint32_t crc_expected = 0xBEAD7F63; // <-- нужно вычислить реально после сборки
+    printf("[DEBUG] CRC of PasswordCheckSilent: %08X\n", crc_now);
+    if (crc_now != crc_expected) {
+        MessageBoxA(NULL, "Integrity check of PasswordCheckSilent failed!", "Tamper", MB_ICONERROR);
+        return 0;
+    }
+    return 1;
+}
+
+int VerifyPasswordBlocks(void) {
+    // Check_passw
+    if (!VerifyPassword()) return 0;
+
+    // HandlePasswordChecks
+    unsigned char* start = (unsigned char*)HandlePasswordChecks;
+    unsigned char* end   = (unsigned char*)HandlePasswordChecks_end;
+    size_t size = (size_t)(end - start);
+    uint32_t crc_now = crc32(start, size);
+    const uint32_t crc_expected = 0x1B0FDC71; // нужно вычислить
+    printf("[DEBUG] CRC of HandlePasswordChecks: %08X\n", crc_now);
+    if (crc_now != crc_expected) {
+        MessageBoxA(NULL, "Integrity check of main password block failed!", "Tamper", MB_ICONERROR);
+        return 0;
+    }
+    // PasswordCheckSilent
+    if (!VerifyPasswordSilentBlock()) return 0;
+
+    return 1;
+}
+
+
+#pragma code_seg(".mytext2")
+NOINLINE void HandlePasswordChecks(void) {
+    if (Check_passw()) {
+        ShowSuccessWindow();
+        if (PasswordCheckSilent()) {
+            GenerateJokes();
+        } else {
+            MessageBoxA(NULL, "Password check failed (pre-jokes).", "Error", MB_OK | MB_ICONERROR);
+        }
+    } else {
+        ShowErrorWindow();
+    }
+}
+NOINLINE void HandlePasswordChecks_end(void) {}
+#pragma code_seg(pop)
 
 int main() {
-    if (!VerifyIntegrity()) {
-        return 1;
-    }
+    if (!VerifyPasswordBlocks()) return 1;
 
     if (!PasswordCheckSilent()) {
         // можно вывести уведомление (шифрованное) и выйти
@@ -270,16 +328,7 @@ int main() {
     secure_printf(enc_MSG_START, sizeof(enc_MSG_START));
     secure_printf(enc_MSG_READ, sizeof(enc_MSG_READ));
 
-    if ( Check_passw()){
-        ShowSuccessWindow();
-        if (PasswordCheckSilent()) {
-            GenerateJokes();
-        } else {
-            MessageBoxA(NULL, "Password check failed (pre-jokes).", "Error", MB_OK | MB_ICONERROR);
-        }
-    } else{
-        ShowErrorWindow();
-    }
+    HandlePasswordChecks();
     
     secure_printf(enc_MSG_COMPLETE, sizeof(enc_MSG_COMPLETE));
     printf("Press Enter to exit...\n");
