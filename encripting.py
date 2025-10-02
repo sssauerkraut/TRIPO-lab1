@@ -10,14 +10,22 @@ strings = {
     'PASSFILE': 'password.txt',
     'SERIALFILE': 'serial.txt',
     'JOKESFILE': 'jokes_generated.txt',
-    'JOKES_HEADER': 'SOME JOKES\\n\\n',
-    'MSG_SUCCESS': 'Password correct!\\n\\nSerial number generated and saved in serial.txt file',
-    'MSG_ERROR': 'Wrong password!\\n\\nCheck password.txt file and try again.',
-    'MSG_START': 'Starting password check program...\\n',
-    'MSG_READ': 'Reading password from password.txt file...\\n',
-    'MSG_COMPLETE': 'Program completed. Press Enter to exit...\\n',
+    'JOKES_HEADER': 'SOME JOKES\n\n',
+    'MSG_SUCCESS_1': 'Password correct!\n\nSerial number generated and saved in serial.txt file',
+    'MSG_SUCCESS_2': 'Success',
+    'MSG_ERROR_1': 'Wrong password!\n\nCheck password.txt file and try again.',
+    'MSG_ERROR_2': 'Error',
+    'MSG_START': 'Starting password check program...\n',
+    'MSG_READ': 'Reading password from password.txt file...\n',
+    'MSG_COMPLETE': 'Program completed. Press Enter to exit...\n',
     'MSG_SERIAL_CREATED': 'Serial number created: ',
-    'MSG_JOKES_CREATED': 'Additional: jokes generated in jokes_generated.txt\\n'
+    'MSG_JOKES_CREATED': 'Additional: jokes generated in jokes_generated.txt\n',
+    'PASSFILE_ERROR': 'Error: password.txt file not found\n',
+    'SERIALFILE_ERROR': 'Error creating serial.txt file',
+    'KEY': 'KEY$xxxxxxxxxx$',
+    'MSG_WRONG_PASS': 'Wrong password!\n',
+
+
 }
 
 # add jokes arrays as needed
@@ -27,5 +35,6 @@ j1 = ["Why did the programmer", "Why does the computer", "Why did the code", ...
 for name, s in strings.items():
     e = enc_bytes(s)
     print("static unsigned char enc_%s[] = {%s}; // len %d" % (name, ", ".join(str(x) for x in e), len(e)))
+    print("\n");
 
 # для массивов jokes делай аналогично: для каждого элемента с именем enc_J1_0, enc_J1_1, ...

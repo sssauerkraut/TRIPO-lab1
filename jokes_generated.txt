@@ -1,22 +1,18 @@
 SOME JOKES
 
 Joke #1:
-- Why did the programmer crash again?
-- To find a memory leak!
+- Why did the code start overheating?
+- It mistook RAM for jam!
 
 Joke #2:
-- Why did the programmer throw an error?
-- Because semicolons are scary!
+- Why does the keyboard start overheating?
+- It mistook RAM for jam!
 
 Joke #3:
-- Why does the student coder crash again?
-- It was debugging its own life!
+- Why does the keyboard start overheating?
+- Because semicolons are scary!
 
 Joke #4:
-- Why did the programmer forget the password?
-- To find a memory leak!
-
-Joke #5:
-- Why does the laptop run away from the desk?
-- Because the code needed some coffee!
+- Why does the keyboard forget the password?
+- It mistook RAM for jam!
 
