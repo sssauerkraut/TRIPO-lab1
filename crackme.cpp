@@ -9,7 +9,6 @@
 #define MAX_LEN 50
 #define KEY_LEN 10
 
-// Дополнительная функциональность (не обязательная для лабы)
 void GenerateJokes() {
     srand((unsigned)time(NULL));
 
@@ -64,15 +63,14 @@ void GenerateJokes() {
 
     FILE* joke_file = fopen("jokes_generated.txt", "w");
     if (joke_file) {
-        fprintf(joke_file, "ADDITIONAL JOKES\n\n");
+        fprintf(joke_file, "SOME JOKES\n\n");
 
-        int jokes_count = 3 + rand() % 3; // 3–5 шуток
+        int jokes_count = 3 + rand() % 3; 
         for (int i = 0; i < jokes_count; i++) {
             int part1 = rand() % size1;
             int part2 = rand() % size2;
             int part3 = rand() % size3;
 
-            // Защита от одинаковых кусочков в одной шутке
             while (part2 == part1) part2 = rand() % size2;
             while (part3 == part2 || part3 == part1) part3 = rand() % size3;
 
@@ -88,27 +86,25 @@ void GenerateJokes() {
 
 
 void ShowSuccessWindow() {
-    // Основное сообщение об успехе (требование лабы)
-    MessageBoxW(
+    MessageBoxA(
         NULL,
-        L"Password correct!\n\n"
-        L"Serial number generated and saved in serial.txt file",
-        L"Success",
+        "Password correct!\n\n"
+        "Serial number generated and saved in serial.txt file",
+        "Success",
         MB_OK | MB_ICONINFORMATION | MB_SYSTEMMODAL
     );
 }
 
 void ShowErrorWindow() {
-    MessageBoxW(
+    MessageBoxA(
         NULL,
-        L"Wrong password!\n\n"
-        L"Check password.txt file and try again.",
-        L"Error",
+        "Wrong password!\n\n"
+        "Check password.txt file and try again.",
+        "Error",
         MB_OK | MB_ICONERROR | MB_SYSTEMMODAL
     );
 }
 
-// Основная функция проверки пароля (требование лабы)
 int Check_passw(void) {
     FILE* pasw_file = fopen("password.txt", "r");
     if (pasw_file == NULL) {
@@ -120,11 +116,9 @@ int Check_passw(void) {
     fgets(pasw, MAX_LEN, pasw_file);
     fclose(pasw_file);
     
-    // Убираем символ новой строки если есть
     pasw[strcspn(pasw, "\n")] = 0;
     
     if (strcmp(PASSWORD, pasw) == 0) {
-        // Генерация серийного номера в формате KEY$xxxxxxxxxx$ (требование лабы)
         FILE* key_file = fopen("serial.txt", "w");
         if (key_file == NULL) {
             printf("Error creating serial.txt file\n");
@@ -136,7 +130,7 @@ int Check_passw(void) {
         srand(time(NULL));
         
         for (int i = 0; i < 10; i++) {
-            key[4 + i] = 33 + rand() % 94; // Печатные символы
+            key[4 + i] = 33 + rand() % 94; 
         }
         
         fprintf(key_file, "%s", key);
@@ -158,10 +152,8 @@ int main() {
     printf("Reading password from password.txt file...\n");
     
     if (Check_passw()) {
-        // Основная логика лабы
         ShowSuccessWindow();
         
-        // Дополнительная функциональность (бонус)
         GenerateJokes();
     }
     else {

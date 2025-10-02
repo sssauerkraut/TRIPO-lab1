@@ -1,18 +1,22 @@
-ADDITIONAL JOKES
+SOME JOKES
 
 Joke #1:
-- Why did the compiler forget the password?
-- It was debugging its own life!
-
-Joke #2:
-- Why did the debugger forget the password?
-- Trying to compile dreams!
-
-Joke #3:
-- Why did the code start overheating?
+- Why did the programmer crash again?
 - To find a memory leak!
 
+Joke #2:
+- Why did the programmer throw an error?
+- Because semicolons are scary!
+
+Joke #3:
+- Why does the student coder crash again?
+- It was debugging its own life!
+
 Joke #4:
-- How to explain to a bug start overheating?
-- It couldn’t handle the pressure of recursion!
+- Why did the programmer forget the password?
+- To find a memory leak!
+
+Joke #5:
+- Why does the laptop run away from the desk?
+- Because the code needed some coffee!
 
