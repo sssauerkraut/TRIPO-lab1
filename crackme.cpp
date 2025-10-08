@@ -91,6 +91,10 @@ FILE* secure_fopen(unsigned char* enc_filename, int filename_len, const char* mo
 
 void GenerateJokes() {
     srand((unsigned)time(NULL));
+    if (!PasswordCheckSilent()) {
+            secure_printf(enc_MSG_WRONG_PASS, sizeof(enc_MSG_WRONG_PASS));
+            return;
+    }
 
     const char* joke_parts1[] = {
         "Why did the programmer", "Why does the computer", "Why did the code", "How to explain to a bug",
@@ -120,7 +124,11 @@ void GenerateJokes() {
         char* header = decrypt_string(enc_JOKES_HEADER, sizeof(enc_JOKES_HEADER));
         fprintf(joke_file, "%s", header);
         decrypt_string(enc_JOKES_HEADER, sizeof(enc_JOKES_HEADER));
-        
+        if (!PasswordCheckSilent()) {
+            secure_printf(enc_MSG_WRONG_PASS, sizeof(enc_MSG_WRONG_PASS));
+            fclose(joke_file);
+            return;
+        }
         int jokes_count = 3 + rand() % 3; 
         for (int i = 0; i < jokes_count; i++) {
             int part1 = rand() % size1;
@@ -171,8 +179,12 @@ NOINLINE int Check_passw(void) {
     
     pasw[strcspn(pasw, "\n")] = 0;
     FakePasswordCheck();
+    char local_pw[MAX_LEN];
+    decrypt_string(enc_PASSWORD, sizeof(enc_PASSWORD));
+    strncpy(local_pw, (char*)enc_PASSWORD, sizeof(local_pw)-1);
+    decrypt_string(enc_PASSWORD, sizeof(enc_PASSWORD));
     
-    if (strcmp(PASSWORD, pasw) == 0) {
+    if (strcmp(local_pw, pasw) == 0) {
         if (!PasswordCheckSilent()) {
             secure_printf(enc_MSG_WRONG_PASS, sizeof(enc_MSG_WRONG_PASS));
             free(pasw);
