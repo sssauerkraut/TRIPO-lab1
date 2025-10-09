@@ -484,7 +484,7 @@ int VerifyPassword(void) {
 
     uint32_t crc_now = crc32(start, size);
 
-    const uint32_t crc_expected = 0x46CDDDF6; 
+    const uint32_t crc_expected = 0xA3876555; 
     printf("[DEBUG] CRC of Check_passw: %08X\n", crc_now);
     if (crc_now != crc_expected) {
         secureMessageBox(enc_MSG_INTEGR_FAILED1, sizeof(enc_MSG_INTEGR_FAILED1), enc_TAMPER, sizeof(enc_TAMPER), MB_ICONERROR);
@@ -502,7 +502,7 @@ int VerifyPasswordSilentBlock(void) {
     }
     size_t size = (size_t)(end - start);
     uint32_t crc_now = crc32(start, size);
-    const uint32_t crc_expected = 0x027D80DB;
+    const uint32_t crc_expected = 0x54C6CB2E;
     printf("[DEBUG] CRC of PasswordCheckSilent: %08X\n", crc_now);
     if (crc_now != crc_expected) {
         secureMessageBox(enc_MSG_INTEGR_FAILED2, sizeof(enc_MSG_INTEGR_FAILED2), enc_TAMPER, sizeof(enc_TAMPER), MB_ICONERROR);
@@ -520,7 +520,7 @@ int VerifyPasswordBlocks(void) {
     unsigned char* end   = (unsigned char*)HandlePasswordChecks_end;
     size_t size = (size_t)(end - start);
     uint32_t crc_now = crc32(start, size);
-    const uint32_t crc_expected = 0x881C1DCE; // нужно вычислить
+    const uint32_t crc_expected = 0x385EA065; // нужно вычислить
     printf("[DEBUG] CRC of HandlePasswordChecks: %08X\n", crc_now);
     if (crc_now != crc_expected) {
         secureMessageBox(enc_MSG_INTEGR_FAILED3, sizeof(enc_MSG_INTEGR_FAILED3), enc_TAMPER, sizeof(enc_TAMPER), MB_ICONERROR);
