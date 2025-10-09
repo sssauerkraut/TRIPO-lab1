@@ -24,8 +24,17 @@ strings = {
     'SERIALFILE_ERROR': 'Error creating serial.txt file',
     'KEY': 'KEY$xxxxxxxxxx$',
     'MSG_WRONG_PASS': 'Wrong password!\n',
-
-
+    'MSG_FK':"Fake check passed!",
+    'ALRT': "Alert",
+    'MSG_INTEGR1':"Integrity check cannot determine function bounds.",
+    'MSG_INTEGR_FAILED1': "Integrity check failed!",
+    'TAMPER': "Tamper",
+    'MSG_INTEGR2': "Integrity check cannot determine PasswordCheckSilent bounds.",
+    'MSG_INTEGR_FAILED2': "Integrity check of PasswordCheckSilent failed!",
+    'MSG_INTEGR_FAILED3': "Integrity check of main password block failed!",
+    'PASS_F1':  "Password check failed (pre-jokes).",
+    'PASS_F2': "Password check failed (early).",
+    'EXIT' : "Press Enter to exit...\n"
 }
 
 # add jokes arrays as needed

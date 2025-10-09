@@ -27,7 +27,8 @@ NOINLINE void HandlePasswordChecks_end(void);
 NOINLINE void HandlePasswordChecks(void);
 NOINLINE void FakePasswordCheck(void);
 
-// простая CRC32 (пример)
+
+// простая CRC32
 uint32_t crc32(const unsigned char *data, size_t len) {
     uint32_t crc = 0xFFFFFFFF;
     for (size_t i = 0; i < len; i++) {
@@ -65,6 +66,20 @@ static unsigned char enc_SERIALFILE_ERROR[] = {31, 177, 12, 53, 177, 94, 57, 177
 static unsigned char enc_KEY[] = {17, 134, 39, 126, 187, 6, 34, 187, 6, 34, 187, 6, 34, 187, 90, 90};
 static unsigned char enc_MSG_WRONG_PASS[] = {13, 177, 17, 52, 164, 94, 42, 162, 13, 41, 180, 17, 40, 167, 95, 80, 195};
 
+static unsigned char enc_MSG_FK[] = {28, 162, 21, 63, 227, 29, 50, 166, 29, 49, 227, 14, 59, 176, 13, 63, 167, 95, 90}; // len 19
+static unsigned char enc_ALRT[] = {27, 175, 27, 40, 183, 126}; // len 6
+static unsigned char enc_MSG_INTEGR1[] = {19, 173, 10, 63, 164, 12, 51, 183, 7, 122, 160, 22, 63, 160, 21, 122, 160, 31, 52, 173, 17, 46, 227, 26, 63, 183, 27, 40, 174, 23, 52, 166, 94, 60, 182, 16, 57, 183, 23, 53, 173, 94, 56, 172, 11, 52, 167, 13, 116, 195}; // len 50
+static unsigned char enc_MSG_INTEGR_FAILED1[] = {19, 173, 10, 63, 164, 12, 51, 183, 7, 122, 160, 22, 63, 160, 21, 122, 165, 31, 51, 175, 27, 62, 226, 126}; // len 24
+static unsigned char enc_TAMPER[] = {14, 162, 19, 42, 166, 12, 90}; // len 7
+static unsigned char enc_MSG_INTEGR2[] = {19, 173, 10, 63, 164, 12, 51, 183, 7, 122, 160, 22, 63, 160, 21, 122, 160, 31, 52, 173, 17, 46, 227, 26, 63, 183, 27, 40, 174, 23, 52, 166, 94, 10, 162, 13, 41, 180, 17, 40, 167, 61, 50, 166, 29, 49, 144, 23, 54, 166, 16, 46, 227, 28, 53, 182, 16, 62, 176, 80, 90}; // len 61
+static unsigned char enc_MSG_INTEGR_FAILED2[] = {19, 173, 10, 63, 164, 12, 51, 183, 7, 122, 160, 22, 63, 160, 21, 122, 172, 24, 122, 147, 31, 41, 176, 9, 53, 177, 26, 25, 171, 27, 57, 168, 45, 51, 175, 27, 52, 183, 94, 60, 162, 23, 54, 166, 26, 123, 195}; // len 47
+static unsigned char enc_MSG_INTEGR_FAILED3[] = {19, 173, 10, 63, 164, 12, 51, 183, 7, 122, 160, 22, 63, 160, 21, 122, 172, 24, 122, 174, 31, 51, 173, 94, 42, 162, 13, 41, 180, 17, 40, 167, 94, 56, 175, 17, 57, 168, 94, 60, 162, 23, 54, 166, 26, 123, 195}; // len 47
+static unsigned char enc_PASS_F1[] = {10, 162, 13, 41, 180, 17, 40, 167, 94, 57, 171, 27, 57, 168, 94, 60, 162, 23, 54, 166, 26, 122, 235, 14, 40, 166, 83, 48, 172, 21, 63, 176, 87, 116, 195}; // len 35
+static unsigned char enc_PASS_F2[] = {10, 162, 13, 41, 180, 17, 40, 167, 94, 57, 171, 27, 57, 168, 94, 60, 162, 23, 54, 166, 26, 122, 235, 27, 59, 177, 18, 35, 234, 80, 90}; // len 31
+static unsigned char enc_EXIT[] = {10, 177, 27, 41, 176, 94, 31, 173, 10, 63, 177, 94, 46, 172, 94, 63, 187, 23, 46, 237, 80, 116, 201, 126}; // len 24
+
+
+
 static const unsigned char xor_key[] = { 0x5A, 0xC3, 0x7E };
 static const int xor_key_len = sizeof(xor_key);
 
@@ -87,6 +102,16 @@ FILE* secure_fopen(unsigned char* enc_filename, int filename_len, const char* mo
     FILE* file = fopen(filename, mode);
     decrypt_string(enc_filename, filename_len);
     return file;
+}
+
+void secureMessageBox(unsigned char* enc_msg, int msg_len, unsigned char* enc_title, int title_len, UINT uType) {
+    char* message = decrypt_string(enc_msg, msg_len);
+    char* title   = decrypt_string(enc_title, title_len);
+
+    MessageBoxA(NULL, message, title, MB_OK | uType | MB_SYSTEMMODAL);
+
+    decrypt_string(enc_msg, msg_len);
+    decrypt_string(enc_title, title_len);
 }
 
 void GenerateJokes() {
@@ -146,23 +171,11 @@ void GenerateJokes() {
 }
 
 void ShowSuccessWindow() {
-    char* message = decrypt_string(enc_MSG_SUCCESS_1, sizeof(enc_MSG_SUCCESS_1));
-    char* title = decrypt_string(enc_MSG_SUCCESS_2, sizeof(enc_MSG_SUCCESS_2));
-    
-    MessageBoxA(NULL, message, title, MB_OK | MB_ICONINFORMATION | MB_SYSTEMMODAL);
-    
-    decrypt_string(enc_MSG_SUCCESS_1, sizeof(enc_MSG_SUCCESS_1));
-    decrypt_string(enc_MSG_SUCCESS_2, sizeof(enc_MSG_SUCCESS_2));
+    secureMessageBox(enc_MSG_SUCCESS_1, sizeof(enc_MSG_SUCCESS_1), enc_MSG_SUCCESS_2, sizeof(enc_MSG_SUCCESS_2), MB_OK | MB_ICONINFORMATION | MB_SYSTEMMODAL );
 }
 
 void ShowErrorWindow() {
-    char* message = decrypt_string(enc_MSG_ERROR_1, sizeof(enc_MSG_ERROR_1));
-    char* title = decrypt_string(enc_MSG_ERROR_2, sizeof(enc_MSG_ERROR_2));
-
-    MessageBoxA(NULL, message, title, MB_OK | MB_ICONERROR | MB_SYSTEMMODAL);
-    
-    decrypt_string(enc_MSG_ERROR_1, sizeof(enc_MSG_ERROR_1));
-    decrypt_string(enc_MSG_ERROR_2, sizeof(enc_MSG_ERROR_2));
+    secureMessageBox(enc_MSG_ERROR_1, sizeof(enc_MSG_ERROR_1), enc_MSG_ERROR_2, sizeof(enc_MSG_ERROR_2), MB_OK | MB_ICONINFORMATION | MB_SYSTEMMODAL );
 }
 
 #pragma code_seg(".mytext")
@@ -265,7 +278,7 @@ NOINLINE void FakePasswordCheck(void) {
     uint32_t crc_now = crc32(dummy, sizeof(dummy));
     const uint32_t crc_expected = 0xDEADBEEF; // явно неверное значение
     if (crc_now == crc_expected) {
-        MessageBoxA(NULL, "Fake check passed!", "Alert", MB_OK);
+        secureMessageBox(enc_MSG_FK, sizeof(enc_MSG_FK), enc_ALRT, sizeof(enc_ALRT), MB_OK);
     }
 }
 
@@ -277,18 +290,17 @@ int VerifyPassword(void) {
     unsigned char *start = (unsigned char*)Check_passw;
     unsigned char *end   = (unsigned char*)Check_passw_end;
     if (end <= start) {
-        // какая-то аномалия: возможно оптимизатор / компоновщик поменял порядок
-        MessageBoxA(NULL, "Integrity check cannot determine function bounds.", "Error", MB_ICONERROR);
+        secureMessageBox(enc_MSG_INTEGR1, sizeof(enc_MSG_INTEGR1), enc_MSG_ERROR_2, sizeof(enc_MSG_ERROR_2), MB_ICONERROR);
         return 0;
     }
     size_t size = (size_t)(end - start);
 
     uint32_t crc_now = crc32(start, size);
 
-    const uint32_t crc_expected = 0x000683E1; 
+    const uint32_t crc_expected = 0x7DA11CFD; 
     printf("[DEBUG] CRC of Check_passw: %08X\n", crc_now);
     if (crc_now != crc_expected) {
-        MessageBoxA(NULL, "Integrity check failed!", "Tamper", MB_ICONERROR);
+        secureMessageBox(enc_MSG_INTEGR_FAILED1, sizeof(enc_MSG_INTEGR_FAILED1), enc_TAMPER, sizeof(enc_TAMPER), MB_ICONERROR);
         return 0;
     }
     return 1;
@@ -298,15 +310,15 @@ int VerifyPasswordSilentBlock(void) {
     unsigned char* start = (unsigned char*)PasswordCheckSilent;
     unsigned char* end   = (unsigned char*)PasswordCheckSilent_end;
     if (end <= start) {
-        MessageBoxA(NULL, "Integrity check cannot determine PasswordCheckSilent bounds.", "Error", MB_ICONERROR);
+        secureMessageBox(enc_MSG_INTEGR2, sizeof(enc_MSG_INTEGR2), enc_MSG_ERROR_2, sizeof(enc_MSG_ERROR_2), MB_ICONERROR);
         return 0;
     }
     size_t size = (size_t)(end - start);
     uint32_t crc_now = crc32(start, size);
-    const uint32_t crc_expected = 0xF9AC4989; // <-- нужно вычислить реально после сборки
+    const uint32_t crc_expected = 0xE1F9F186; // <-- нужно вычислить реально после сборки
     printf("[DEBUG] CRC of PasswordCheckSilent: %08X\n", crc_now);
     if (crc_now != crc_expected) {
-        MessageBoxA(NULL, "Integrity check of PasswordCheckSilent failed!", "Tamper", MB_ICONERROR);
+        secureMessageBox(enc_MSG_INTEGR_FAILED2, sizeof(enc_MSG_INTEGR_FAILED2), enc_TAMPER, sizeof(enc_TAMPER), MB_ICONERROR);
         return 0;
     }
     return 1;
@@ -321,10 +333,10 @@ int VerifyPasswordBlocks(void) {
     unsigned char* end   = (unsigned char*)HandlePasswordChecks_end;
     size_t size = (size_t)(end - start);
     uint32_t crc_now = crc32(start, size);
-    const uint32_t crc_expected = 0xA3B86EEF; // нужно вычислить
+    const uint32_t crc_expected = 0xF7935FDA; // нужно вычислить
     printf("[DEBUG] CRC of HandlePasswordChecks: %08X\n", crc_now);
     if (crc_now != crc_expected) {
-        MessageBoxA(NULL, "Integrity check of main password block failed!", "Tamper", MB_ICONERROR);
+        secureMessageBox(enc_MSG_INTEGR_FAILED3, sizeof(enc_MSG_INTEGR_FAILED3), enc_TAMPER, sizeof(enc_TAMPER), MB_ICONERROR);
         return 0;
     }
     // PasswordCheckSilent
@@ -341,7 +353,7 @@ NOINLINE void HandlePasswordChecks(void) {
         if (PasswordCheckSilent()) {
             GenerateJokes();
         } else {
-            MessageBoxA(NULL, "Password check failed (pre-jokes).", "Error", MB_OK | MB_ICONERROR);
+            secureMessageBox(enc_PASS_F1, sizeof(enc_PASS_F1), enc_MSG_ERROR_2, sizeof(enc_MSG_ERROR_2), MB_OK | MB_ICONERROR);
         }
     } else {
         ShowErrorWindow();
@@ -354,8 +366,7 @@ int main() {
     if (!VerifyPasswordBlocks()) return 1;
 
     if (!PasswordCheckSilent()) {
-        // можно вывести уведомление (шифрованное) и выйти
-        MessageBoxA(NULL, "Password check failed (early).", "Error", MB_OK | MB_ICONERROR);
+        secureMessageBox(enc_PASS_F2, sizeof(enc_PASS_F2), enc_MSG_ERROR_2, sizeof(enc_MSG_ERROR_2), MB_OK | MB_ICONERROR);
         return 1;
     }
     secure_printf(enc_MSG_START, sizeof(enc_MSG_START));
@@ -364,7 +375,7 @@ int main() {
     HandlePasswordChecks();
     
     secure_printf(enc_MSG_COMPLETE, sizeof(enc_MSG_COMPLETE));
-    printf("Press Enter to exit...\n");
+    secure_printf(enc_EXIT, sizeof(enc_EXIT));
     getchar();
     
     return 0;
