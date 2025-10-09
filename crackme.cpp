@@ -7,6 +7,7 @@
 #include <stdint.h>
 #include <tlhelp32.h>
 #include <winternl.h>
+#include <intrin.h> 
 
 
 #ifdef _MSC_VER
@@ -14,6 +15,66 @@
 #else
   #define NOINLINE __attribute__((noinline))
 #endif
+
+/* --- Anti-disassembly macros (GCC/Clang and MSVC) --- */
+
+#if defined(_MSC_VER)
+
+/* MSVC inline asm version */
+#define ANTI_DISASM_BYTES() __asm { \
+    /* jz +3, jnz +1, then raw bytes of a call (E8 xx xx xx xx) */ \
+    jz SHORT Lfake_msvc             \
+    jnz SHORT Lfake_msvc_next       \
+    _emit 0xE8                      /* byte that looks like start of CALL */ \
+    _emit 0x78                      \
+    _emit 0x56                      \
+    _emit 0x34                      \
+    _emit 0x12                      \
+Lfake_msvc:                         \
+    nop                             \
+Lfake_msvc_next:                    \
+    nop                             \
+}
+
+#define IMPOSSIBLE_DISASM() __asm { \
+    /* inward jump trick: jump into middle of instruction */ \
+    jmp SHORT Lmsvc1                 \
+    _emit 0xFF                       /* rogue byte (part of jmp and next instr) */ \
+Lmsvc1:                              \
+    inc eax                          \
+    dec eax                          \
+}
+
+#elif defined(__GNUC__) || defined(__clang__)
+
+/* GCC/Clang inline asm (AT&T syntax) */
+#define ANTI_DISASM_BYTES() \
+    __asm__ __volatile__( \
+        /* jz +3, jnz +1, then raw bytes of a call (E8 xx xx xx xx) */ \
+        ".byte 0x74, 0x03, 0x75, 0x01, 0xE8, 0x78, 0x56, 0x34, 0x12\n\t" \
+    )
+
+/* Impossible-disasm short inward-jump sequence.
+   Use %%eax (double %% in gcc asm templates). Clobber EAX so compiler is aware. */
+#define IMPOSSIBLE_DISASM() \
+    __asm__ __volatile__( \
+        "jmp 1f\n\t"        /* jump into middle */ \
+        ".byte 0xFF\n\t"    /* rogue byte (overlaps) */ \
+        "1:\n\t"             \
+        "incl %%eax\n\t"    \
+        "decl %%eax\n\t"    \
+        : /* no outputs */  \
+        : /* no inputs */   \
+        : "eax"             \
+    )
+
+#else
+
+#define ANTI_DISASM_BYTES() /* nothing on unsupported compilers */
+#define IMPOSSIBLE_DISASM() /* nothing */
+
+#endif
+
 
 // Прототипы функций
 void secure_printf(unsigned char* enc_str, int str_len);
@@ -206,6 +267,43 @@ NOINLINE int RunAntiDebugChecks() {
     return 0;
 }
 
+// Обнаружение VMWare через backdoor порт
+int DetectVMWare() {
+    int result = 0;
+    uint32_t eax = 0x564D5848; // 'VMXh'
+    uint32_t ebx = 0;
+    uint32_t ecx = 0x0A;
+    uint32_t edx = 0x5658;
+    // Inline asm в стиле GCC
+    asm volatile (
+        "in %%dx, %%eax;"
+        : "+a"(eax), "+b"(ebx), "+c"(ecx)
+        : "d"(edx)
+    );
+
+    if (ebx == 0x564D5848) { // 'VMXh'
+        result = 1;
+    }
+
+    return result;
+}
+
+// Проверка через CPUID (гипервизор)
+int DetectHypervisor() {
+    int cpuInfo[4] = {0};
+    
+    // CPUID с EAX=1 - получаем информацию о процессоре
+    __cpuid(cpuInfo, 1);
+    
+    // Проверяем бит гипервизора (31-й бит в ECX)
+    if (cpuInfo[2] & (1 << 31)) {
+        return 1; // Обнаружен гипервизор
+    }
+    
+    return 0;
+}
+
+
 void GenerateJokes() {
     srand((unsigned)time(NULL));
     if (!PasswordCheckSilent()) {
@@ -386,7 +484,7 @@ int VerifyPassword(void) {
 
     uint32_t crc_now = crc32(start, size);
 
-    const uint32_t crc_expected = 0x382AB953; 
+    const uint32_t crc_expected = 0x46CDDDF6; 
     printf("[DEBUG] CRC of Check_passw: %08X\n", crc_now);
     if (crc_now != crc_expected) {
         secureMessageBox(enc_MSG_INTEGR_FAILED1, sizeof(enc_MSG_INTEGR_FAILED1), enc_TAMPER, sizeof(enc_TAMPER), MB_ICONERROR);
@@ -404,7 +502,7 @@ int VerifyPasswordSilentBlock(void) {
     }
     size_t size = (size_t)(end - start);
     uint32_t crc_now = crc32(start, size);
-    const uint32_t crc_expected = 0xB640F050;
+    const uint32_t crc_expected = 0x027D80DB;
     printf("[DEBUG] CRC of PasswordCheckSilent: %08X\n", crc_now);
     if (crc_now != crc_expected) {
         secureMessageBox(enc_MSG_INTEGR_FAILED2, sizeof(enc_MSG_INTEGR_FAILED2), enc_TAMPER, sizeof(enc_TAMPER), MB_ICONERROR);
@@ -422,7 +520,7 @@ int VerifyPasswordBlocks(void) {
     unsigned char* end   = (unsigned char*)HandlePasswordChecks_end;
     size_t size = (size_t)(end - start);
     uint32_t crc_now = crc32(start, size);
-    const uint32_t crc_expected = 0xC31E9B52; // нужно вычислить
+    const uint32_t crc_expected = 0x881C1DCE; // нужно вычислить
     printf("[DEBUG] CRC of HandlePasswordChecks: %08X\n", crc_now);
     if (crc_now != crc_expected) {
         secureMessageBox(enc_MSG_INTEGR_FAILED3, sizeof(enc_MSG_INTEGR_FAILED3), enc_TAMPER, sizeof(enc_TAMPER), MB_ICONERROR);
@@ -437,6 +535,7 @@ int VerifyPasswordBlocks(void) {
 
 #pragma code_seg(".mytext2")
 NOINLINE void HandlePasswordChecks(void) {
+    IMPOSSIBLE_DISASM();
     if (Check_passw()) {
         ShowSuccessWindow();
         if (PasswordCheckSilent()) {
@@ -452,15 +551,15 @@ NOINLINE void HandlePasswordChecks_end(void) {}
 #pragma code_seg(pop)
 
 int main() {
-    if (!VerifyPasswordBlocks()) return 1;
-
+    ANTI_DISASM_BYTES();
+    if (!VerifyPasswordBlocks() || RunAntiDebugChecks()) return 1;
+    IMPOSSIBLE_DISASM();
     if (!PasswordCheckSilent()) {
         secureMessageBox(enc_PASS_F2, sizeof(enc_PASS_F2), enc_MSG_ERROR_2, sizeof(enc_MSG_ERROR_2), MB_OK | MB_ICONERROR);
         return 1;
     }
     secure_printf(enc_MSG_START, sizeof(enc_MSG_START));
     secure_printf(enc_MSG_READ, sizeof(enc_MSG_READ));
-
     HandlePasswordChecks();
     
     secure_printf(enc_MSG_COMPLETE, sizeof(enc_MSG_COMPLETE));
