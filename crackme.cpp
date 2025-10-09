@@ -5,6 +5,9 @@
 #include <time.h>
 #include <windows.h>
 #include <stdint.h>
+#include <tlhelp32.h>
+#include <winternl.h>
+
 
 #ifdef _MSC_VER
   #define NOINLINE __declspec(noinline)
@@ -77,7 +80,7 @@ static unsigned char enc_MSG_INTEGR_FAILED3[] = {19, 173, 10, 63, 164, 12, 51, 1
 static unsigned char enc_PASS_F1[] = {10, 162, 13, 41, 180, 17, 40, 167, 94, 57, 171, 27, 57, 168, 94, 60, 162, 23, 54, 166, 26, 122, 235, 14, 40, 166, 83, 48, 172, 21, 63, 176, 87, 116, 195}; // len 35
 static unsigned char enc_PASS_F2[] = {10, 162, 13, 41, 180, 17, 40, 167, 94, 57, 171, 27, 57, 168, 94, 60, 162, 23, 54, 166, 26, 122, 235, 27, 59, 177, 18, 35, 234, 80, 90}; // len 31
 static unsigned char enc_EXIT[] = {10, 177, 27, 41, 176, 94, 31, 173, 10, 63, 177, 94, 46, 172, 94, 63, 187, 23, 46, 237, 80, 116, 201, 126}; // len 24
-
+static unsigned char enc_MSG_DBG[] = {10, 177, 17, 57, 160, 27, 41, 227, 9, 59, 176, 94, 62, 166, 28, 47, 164, 25, 63, 167, 80, 90}; // len 22
 
 
 static const unsigned char xor_key[] = { 0x5A, 0xC3, 0x7E };
@@ -112,6 +115,95 @@ void secureMessageBox(unsigned char* enc_msg, int msg_len, unsigned char* enc_ti
 
     decrypt_string(enc_msg, msg_len);
     decrypt_string(enc_title, title_len);
+}
+
+typedef NTSTATUS (NTAPI *NtQueryInformationProcessPtr)(
+    HANDLE, UINT, PVOID, ULONG, PULONG
+);
+
+//Проверяет флаг DebugPort в структуре процесса
+//DebugPort - указатель на порт отладки, если процесс отлаживается
+//Может проверять как текущий, так и удаленные процессы
+int DetectDebugger1() {
+    BOOL present = FALSE;
+    CheckRemoteDebuggerPresent(GetCurrentProcess(), &present);
+    return present;
+}
+
+//Получаем handle ntdll.dll (где находятся низкоуровневые API)        Это Native API DLL - мост между user-mode и kernel-mode
+//Достаем указатель на NtQueryInformationProcess - низкоуровневую функцию ядра
+//ProcessDebugPort (7) - запрашиваем порт отладки процесса
+//Если процесс отлаживается, debugPort будет содержать указатель на порт отладки
+//Если не отлаживается - debugPort = 0
+//status == 0 (STATUS_SUCCESS) - запрос выполнен успешно
+//debugPort != 0 - обнаружен порт отладки
+int DetectDebugger2() {
+    HMODULE ntdll = GetModuleHandleA("ntdll.dll");
+    if (!ntdll) return 0;
+    NtQueryInformationProcessPtr NtQueryInformationProcess =
+        (NtQueryInformationProcessPtr)GetProcAddress(ntdll, "NtQueryInformationProcess");
+    if (!NtQueryInformationProcess) return 0;
+
+    DWORD debugPort = 0;
+    NTSTATUS status = NtQueryInformationProcess(GetCurrentProcess(), 7, /* ProcessDebugPort*/ &debugPort, sizeof(debugPort), NULL);
+    if (status == 0 && debugPort != 0) return 1;
+    return 0;
+}
+
+int DetectDebugger3() {
+#ifdef _MSC_VER
+    // --- Microsoft Visual C++ ---
+    __try {
+        __asm int 3   // софтверный брейкпоинт
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) {
+        return 0; // исключение поймали -> нет отладчика
+    }
+    return 1; // если отладчик есть – исключение не перехватится
+#else
+    // В MinGW просто проверяем напрямую
+    if (IsDebuggerPresent()) {
+        return 1;
+    }
+    return 0;
+#endif
+}
+
+
+//обращение напрямую к PEB( более низкоуровневая нежели DetectDebugger1)
+int CheckPEBDebugFlag() { 
+    #if defined(_M_X64) || defined(__amd64__)
+        PBYTE pPEB = (PBYTE)__readgsqword(0x60); // x64
+    #else
+        PBYTE pPEB = (PBYTE)__readfsdword(0x30); // x86
+    #endif
+        if (!pPEB) return 0;
+        BYTE BeingDebugged = *(BYTE*)(pPEB + 2); // offset 2 для BeingDebugged
+        return BeingDebugged != 0;
+}
+
+//Обнаружение API-хуков 
+int DetectHooks() {
+    //Проверяет поле BeingDebugged в PEB (Process Environment Block)
+    //PEB - структура данных ядра Windows для каждого процесса
+    //При запуске процесса под отладчиком система устанавливает BeingDebugged = 1
+    BOOL api_result = IsDebuggerPresent();
+    BOOL direct_result = CheckPEBDebugFlag();
+    
+    // Если результаты различаются - возможен хук!
+    if (api_result != direct_result) {
+        return 1; // Обнаружен хук API функции
+    }
+    
+    return api_result; // Возвращаем любой результат (они одинаковы)
+}
+
+NOINLINE int RunAntiDebugChecks() {
+    if (DetectDebugger1() || DetectDebugger2() || DetectDebugger3() || DetectHooks()) {
+        secureMessageBox(enc_MSG_DBG, sizeof(enc_MSG_DBG), enc_ALRT, sizeof(enc_ALRT), MB_ICONERROR);
+        return 1;
+    }
+    return 0;
 }
 
 void GenerateJokes() {
@@ -253,9 +345,6 @@ NOINLINE int PasswordCheckSilent(void) {
     fclose(f);
     buf[strcspn(buf, "\r\n")] = 0; // убираем CRLF/NL
 
-    // Сравниваем с эталоном — PASSWORD макрос либо можно сравнить с enc_PASSWORD после дешифровки.
-    // Лучше — сравнить с зашифрованной строкой, чтобы не иметь plain‑text в бинарнике.
-    // Тут использую decrypt для enc_PASSWORD, копирую в stack и сразу re-encrypt.
     char local_pw[MAX_LEN];
     decrypt_string(enc_PASSWORD, sizeof(enc_PASSWORD));
     strncpy(local_pw, (char*)enc_PASSWORD, sizeof(local_pw)-1);
@@ -297,7 +386,7 @@ int VerifyPassword(void) {
 
     uint32_t crc_now = crc32(start, size);
 
-    const uint32_t crc_expected = 0x7DA11CFD; 
+    const uint32_t crc_expected = 0x382AB953; 
     printf("[DEBUG] CRC of Check_passw: %08X\n", crc_now);
     if (crc_now != crc_expected) {
         secureMessageBox(enc_MSG_INTEGR_FAILED1, sizeof(enc_MSG_INTEGR_FAILED1), enc_TAMPER, sizeof(enc_TAMPER), MB_ICONERROR);
@@ -315,7 +404,7 @@ int VerifyPasswordSilentBlock(void) {
     }
     size_t size = (size_t)(end - start);
     uint32_t crc_now = crc32(start, size);
-    const uint32_t crc_expected = 0xE1F9F186; // <-- нужно вычислить реально после сборки
+    const uint32_t crc_expected = 0xB640F050;
     printf("[DEBUG] CRC of PasswordCheckSilent: %08X\n", crc_now);
     if (crc_now != crc_expected) {
         secureMessageBox(enc_MSG_INTEGR_FAILED2, sizeof(enc_MSG_INTEGR_FAILED2), enc_TAMPER, sizeof(enc_TAMPER), MB_ICONERROR);
@@ -333,7 +422,7 @@ int VerifyPasswordBlocks(void) {
     unsigned char* end   = (unsigned char*)HandlePasswordChecks_end;
     size_t size = (size_t)(end - start);
     uint32_t crc_now = crc32(start, size);
-    const uint32_t crc_expected = 0xF7935FDA; // нужно вычислить
+    const uint32_t crc_expected = 0xC31E9B52; // нужно вычислить
     printf("[DEBUG] CRC of HandlePasswordChecks: %08X\n", crc_now);
     if (crc_now != crc_expected) {
         secureMessageBox(enc_MSG_INTEGR_FAILED3, sizeof(enc_MSG_INTEGR_FAILED3), enc_TAMPER, sizeof(enc_TAMPER), MB_ICONERROR);

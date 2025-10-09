@@ -34,7 +34,14 @@ strings = {
     'MSG_INTEGR_FAILED3': "Integrity check of main password block failed!",
     'PASS_F1':  "Password check failed (pre-jokes).",
     'PASS_F2': "Password check failed (early).",
-    'EXIT' : "Press Enter to exit...\n"
+    'EXIT' : "Press Enter to exit...\n",
+    'MSG_DBG': "Procces was debugged."
+}
+
+strings2 = {
+    "Why did the programmer", "Why does the computer", "Why did the code", "How to explain to a bug",
+    "Why does the keyboard", "Why did the compiler", "Why does the laptop", "Why did the mouse",
+    "Why does the Internet", "Why did the server", "Why does the student coder", "Why did the debugger"
 }
 
 # add jokes arrays as needed
@@ -46,4 +53,8 @@ for name, s in strings.items():
     print("static unsigned char enc_%s[] = {%s}; // len %d" % (name, ", ".join(str(x) for x in e), len(e)))
     print("\n");
 
+
+for s in strings2:
+    e = enc_bytes(s)
+    print("{%s },// len %d" % (", ".join(str(x) for x in e), len(e)))
 # для массивов jokes делай аналогично: для каждого элемента с именем enc_J1_0, enc_J1_1, ...
