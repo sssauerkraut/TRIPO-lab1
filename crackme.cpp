@@ -142,6 +142,7 @@ static unsigned char enc_PASS_F1[] = {10, 162, 13, 41, 180, 17, 40, 167, 94, 57,
 static unsigned char enc_PASS_F2[] = {10, 162, 13, 41, 180, 17, 40, 167, 94, 57, 171, 27, 57, 168, 94, 60, 162, 23, 54, 166, 26, 122, 235, 27, 59, 177, 18, 35, 234, 80, 90}; // len 31
 static unsigned char enc_EXIT[] = {10, 177, 27, 41, 176, 94, 31, 173, 10, 63, 177, 94, 46, 172, 94, 63, 187, 23, 46, 237, 80, 116, 201, 126}; // len 24
 static unsigned char enc_MSG_DBG[] = {10, 177, 17, 57, 160, 27, 41, 227, 9, 59, 176, 94, 62, 166, 28, 47, 164, 25, 63, 167, 80, 90}; // len 22
+static unsigned char enc_MSG_VM[] = {10, 177, 17, 57, 160, 27, 41, 227, 31, 46, 227, 40, 23, 237, 126}; // len 15
 
 
 static const unsigned char xor_key[] = { 0x5A, 0xC3, 0x7E };
@@ -267,27 +268,116 @@ NOINLINE int RunAntiDebugChecks() {
     return 0;
 }
 
-// Обнаружение VMWare через backdoor порт
-int DetectVMWare() {
-    int result = 0;
-    uint32_t eax = 0x564D5848; // 'VMXh'
-    uint32_t ebx = 0;
-    uint32_t ecx = 0x0A;
-    uint32_t edx = 0x5658;
-    // Inline asm в стиле GCC
-    asm volatile (
-        "in %%dx, %%eax;"
-        : "+a"(eax), "+b"(ebx), "+c"(ecx)
-        : "d"(edx)
-    );
+int DetectVMProcesses() {
+    const wchar_t* vmProcesses[] = {
+        L"vboxservice.exe", L"vboxtray.exe",
+        L"vmwaretray.exe", L"vmwareuser.exe", L"vmtoolsd.exe", L"vmacthlp.exe",
+        L"qemu-ga.exe", L"prl_tools.exe", L"xenservice.exe", L"VirtualBoxVM.exe"
+    };
 
-    if (ebx == 0x564D5848) { // 'VMXh'
-        result = 1;
-    }
+    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snap == INVALID_HANDLE_VALUE) return 0;
 
-    return result;
+    PROCESSENTRY32W pe;
+    pe.dwSize = sizeof(pe);
+    if (!Process32FirstW(snap, &pe)) { CloseHandle(snap); return 0; }
+
+    do {
+        for (size_t i = 0; i < sizeof(vmProcesses)/sizeof(vmProcesses[0]); i++) {
+            if (_wcsicmp(pe.szExeFile, vmProcesses[i]) == 0) {
+                CloseHandle(snap);
+                return 1;
+            }
+        }
+    } while (Process32NextW(snap, &pe));
+
+    CloseHandle(snap);
+    return 0;
 }
 
+
+int DetectVMRegistry() {
+     const char* vmKeys[] = {
+        "HARDWARE\\ACPI\\DSDT\\VBOX__",
+        "HARDWARE\\ACPI\\FADT\\VBOX__",
+        "HARDWARE\\ACPI\\RSDT\\VBOX__",
+        "SYSTEM\\ControlSet001\\Services\\VBoxGuest",
+        "SYSTEM\\ControlSet001\\Services\\vmtools",
+        "SYSTEM\\ControlSet001\\Services\\vmhgfs"
+    };
+
+    HKEY hKey;
+    for (size_t i = 0; i < sizeof(vmKeys)/sizeof(vmKeys[0]); i++) {
+        if (RegOpenKeyExA(HKEY_LOCAL_MACHINE, vmKeys[i], 0, KEY_READ, &hKey) == ERROR_SUCCESS) {
+            RegCloseKey(hKey);
+            return 1; // найден ключ ВМ
+        }
+    }
+    return 0;
+}
+
+#include <string>
+#include <cstring>
+
+#if defined(_MSC_VER)
+  #include <intrin.h>
+#else
+  #include <cpuid.h>
+#endif
+
+int DetectVMByHypervisor()
+{
+#if defined(_MSC_VER)
+    int cpuInfo[4];
+    __cpuid(cpuInfo, 1); // Проверим бит гипервизора
+    if (!(cpuInfo[2] & (1 << 31)))
+        return 0; // Бит гипервизора не установлен
+#else
+    unsigned int eax, ebx, ecx, edx;
+    if (!__get_cpuid(1, &eax, &ebx, &ecx, &edx))
+        return 0; // CPUID не поддерживается
+    if (!(ecx & (1u << 31)))
+        return 0; // Бит гипервизора не установлен
+#endif
+
+    // Получаем vendor string
+#if defined(_MSC_VER)
+    __cpuid(cpuInfo, 0x40000000);
+    char vendor[13];
+    memcpy(vendor, &cpuInfo[1], 4); // EBX
+    memcpy(vendor+4, &cpuInfo[2], 4); // ECX
+    memcpy(vendor+8, &cpuInfo[3], 4); // EDX
+#else
+    if (!__get_cpuid(0x40000000, &eax, &ebx, &ecx, &edx))
+        return 0; // CPUID 0x40000000 не поддерживается
+    char vendor[13];
+    memcpy(vendor, &ebx, 4);
+    memcpy(vendor+4, &ecx, 4);
+    memcpy(vendor+8, &edx, 4);
+#endif
+    vendor[12] = 0;
+
+    // Список известных гипервизоров
+    const char* knownVendors[] = {
+        "KVMKVMKVM",
+        "Microsoft Hv",
+        "VMwareVMware",
+        "VBoxVBoxVBox",
+        "XenVMMXenVMM",
+        "bhyve bhyve "
+    };
+    const size_t n = sizeof(knownVendors)/sizeof(knownVendors[0]);
+
+    for (size_t i = 0; i < n; ++i)
+    {
+        if (std::strncmp(vendor, knownVendors[i], 12) == 0)
+            return 1; // найден известный гипервизор
+    }
+
+    return 0; // не найден
+}
+
+/* НЕ РАБОТАЕТ ТК НА МОЕМ ПК ВКЛЮЧЕН HYPER_V
 // Проверка через CPUID (гипервизор)
 int DetectHypervisor() {
     int cpuInfo[4] = {0};
@@ -300,6 +390,15 @@ int DetectHypervisor() {
         return 1; // Обнаружен гипервизор
     }
     
+    return 0;
+}*/
+
+int DetectVM(){
+    char vendor[64];
+    if (DetectVMRegistry() || DetectVMByHypervisor() || DetectVMProcesses()){
+        secureMessageBox(enc_MSG_VM, sizeof(enc_MSG_VM), enc_ALRT, sizeof(enc_ALRT), MB_ICONERROR);
+        return 1;
+    }
     return 0;
 }
 
@@ -484,7 +583,7 @@ int VerifyPassword(void) {
 
     uint32_t crc_now = crc32(start, size);
 
-    const uint32_t crc_expected = 0xA3876555; 
+    const uint32_t crc_expected = 0xEB1BADDF; 
     printf("[DEBUG] CRC of Check_passw: %08X\n", crc_now);
     if (crc_now != crc_expected) {
         secureMessageBox(enc_MSG_INTEGR_FAILED1, sizeof(enc_MSG_INTEGR_FAILED1), enc_TAMPER, sizeof(enc_TAMPER), MB_ICONERROR);
@@ -502,7 +601,7 @@ int VerifyPasswordSilentBlock(void) {
     }
     size_t size = (size_t)(end - start);
     uint32_t crc_now = crc32(start, size);
-    const uint32_t crc_expected = 0x54C6CB2E;
+    const uint32_t crc_expected = 0x8750A91F;
     printf("[DEBUG] CRC of PasswordCheckSilent: %08X\n", crc_now);
     if (crc_now != crc_expected) {
         secureMessageBox(enc_MSG_INTEGR_FAILED2, sizeof(enc_MSG_INTEGR_FAILED2), enc_TAMPER, sizeof(enc_TAMPER), MB_ICONERROR);
@@ -520,7 +619,7 @@ int VerifyPasswordBlocks(void) {
     unsigned char* end   = (unsigned char*)HandlePasswordChecks_end;
     size_t size = (size_t)(end - start);
     uint32_t crc_now = crc32(start, size);
-    const uint32_t crc_expected = 0x385EA065; // нужно вычислить
+    const uint32_t crc_expected = 0x1227315C; // нужно вычислить
     printf("[DEBUG] CRC of HandlePasswordChecks: %08X\n", crc_now);
     if (crc_now != crc_expected) {
         secureMessageBox(enc_MSG_INTEGR_FAILED3, sizeof(enc_MSG_INTEGR_FAILED3), enc_TAMPER, sizeof(enc_TAMPER), MB_ICONERROR);
@@ -552,7 +651,7 @@ NOINLINE void HandlePasswordChecks_end(void) {}
 
 int main() {
     ANTI_DISASM_BYTES();
-    if (!VerifyPasswordBlocks() || RunAntiDebugChecks()) return 1;
+    if (/*!VerifyPasswordBlocks() ||*/ RunAntiDebugChecks() || DetectVM()) return 1;
     IMPOSSIBLE_DISASM();
     if (!PasswordCheckSilent()) {
         secureMessageBox(enc_PASS_F2, sizeof(enc_PASS_F2), enc_MSG_ERROR_2, sizeof(enc_MSG_ERROR_2), MB_OK | MB_ICONERROR);

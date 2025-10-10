@@ -35,7 +35,8 @@ strings = {
     'PASS_F1':  "Password check failed (pre-jokes).",
     'PASS_F2': "Password check failed (early).",
     'EXIT' : "Press Enter to exit...\n",
-    'MSG_DBG': "Procces was debugged."
+    'MSG_DBG': "Procces was debugged.",
+    'MSG_VM': "Procces at VM."
 }
 
 strings2 = {
