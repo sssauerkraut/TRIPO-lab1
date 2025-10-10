@@ -90,6 +90,9 @@ int VerifyPasswordBlocks(void);
 NOINLINE void HandlePasswordChecks_end(void);
 NOINLINE void HandlePasswordChecks(void);
 NOINLINE void FakePasswordCheck(void);
+NOINLINE void FakePasswordCheck_end(void);
+NOINLINE int SelfModifyingCheck(void);
+NOINLINE void SelfModifyingCheck_end(void);
 
 
 // простая CRC32
@@ -402,7 +405,6 @@ int DetectVM(){
     return 0;
 }
 
-
 void GenerateJokes() {
     srand((unsigned)time(NULL));
     if (!PasswordCheckSilent()) {
@@ -458,6 +460,7 @@ void GenerateJokes() {
         secure_printf(enc_MSG_JOKES_CREATED, sizeof(enc_MSG_JOKES_CREATED));
     }
 }
+void GenerateJokes_end(void) {}
 
 void ShowSuccessWindow() {
     secureMessageBox(enc_MSG_SUCCESS_1, sizeof(enc_MSG_SUCCESS_1), enc_MSG_SUCCESS_2, sizeof(enc_MSG_SUCCESS_2), MB_OK | MB_ICONINFORMATION | MB_SYSTEMMODAL );
@@ -555,6 +558,7 @@ NOINLINE void PasswordCheckSilent_end(void) {}
 
 #pragma code_seg(".mytext_fake")
 NOINLINE void FakePasswordCheck(void) {
+
     // Ложная проверка, ничего не делает
     unsigned char dummy[16];
     srand((unsigned)time(NULL));
@@ -634,7 +638,8 @@ int VerifyPasswordBlocks(void) {
 
 #pragma code_seg(".mytext2")
 NOINLINE void HandlePasswordChecks(void) {
-    IMPOSSIBLE_DISASM();
+    IMPOSSIBLE_DISASM();  
+
     if (Check_passw()) {
         ShowSuccessWindow();
         if (PasswordCheckSilent()) {
@@ -649,14 +654,54 @@ NOINLINE void HandlePasswordChecks(void) {
 NOINLINE void HandlePasswordChecks_end(void) {}
 #pragma code_seg(pop)
 
+
+// Функция для изменения защиты памяти
+void EnableSelfModification(void* address, size_t size) {
+    DWORD old_protect;
+    VirtualProtect(address, size, PAGE_EXECUTE_READWRITE, &old_protect);
+}
+
+#pragma code_seg(".selfmod")
+NOINLINE int SelfModifyingCheck(void) {
+    static int modified = 0;
+    
+    // Основная проверка
+    int result = PasswordCheckSilent();
+    
+    // Модифицируем себя после выполнения
+    if (!modified) {
+        modified = 1;
+        
+        unsigned char* target = (unsigned char*)SelfModifyingCheck + 20;
+        size_t patch_size = 8;
+        
+        EnableSelfModification(target, patch_size);
+        
+        // добавляем NOP-инструкции
+        for (size_t i = 0; i < patch_size; i++) {
+            target[i] = 0x90; // Код инструкции NOP (No Operation)
+        }
+        
+        FlushInstructionCache(GetCurrentProcess(), target, patch_size);
+    }
+    
+    return result;
+}
+NOINLINE void SelfModifyingCheck_end(void) {}
+#pragma code_seg(pop)
+
+
 int main() {
     ANTI_DISASM_BYTES();
+    printf("OK");
     if (/*!VerifyPasswordBlocks() ||*/ RunAntiDebugChecks() || DetectVM()) return 1;
     IMPOSSIBLE_DISASM();
-    if (!PasswordCheckSilent()) {
+    printf("OK");
+    if (!SelfModifyingCheck()) {
         secureMessageBox(enc_PASS_F2, sizeof(enc_PASS_F2), enc_MSG_ERROR_2, sizeof(enc_MSG_ERROR_2), MB_OK | MB_ICONERROR);
         return 1;
     }
+    printf("OK");
     secure_printf(enc_MSG_START, sizeof(enc_MSG_START));
     secure_printf(enc_MSG_READ, sizeof(enc_MSG_READ));
     HandlePasswordChecks();
